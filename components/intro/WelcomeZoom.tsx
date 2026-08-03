@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 /**
  * Der Durchflug durch „Herzlich Willkommen“.
@@ -45,15 +52,27 @@ const CHROM_BIS = 0.12;
 /** Wo die Schrift steht und wie groß sie ist – am Vorhang abgemessen. */
 export type Anker = { x: number; y: number; grad: number };
 
-export default function WelcomeZoom({
-  fortschritt,
-  anker,
-}: {
-  fortschritt: number;
-  anker: Anker;
-}) {
+/** Der Durchflug wird von außen gesetzt, Bild für Bild. */
+export type ZoomGriff = { setzen: (fortschritt: number) => void };
+
+/**
+ * Der Fortschritt kommt bewusst **nicht** als React-Zustand herein.
+ *
+ * Bei sechzig Bildern in der Sekunde hieße das sechzig Neudurchläufe des
+ * ganzen Vorhangs pro Sekunde – mit Partnerlogos, Übergängen und allem, was
+ * daran hängt. Auf dem Handy war das ein spürbarer Teil der Last. Stattdessen
+ * werden hier nur die beiden Transformationen im SVG direkt gesetzt; React
+ * sieht davon nichts.
+ */
+const WelcomeZoom = forwardRef<ZoomGriff, { anker: Anker }>(function WelcomeZoom(
+  { anker },
+  griff,
+) {
   const [mass, setMass] = useState({ b: 1440, h: 900 });
   const textRef = useRef<SVGTextElement>(null);
+  const maskeGRef = useRef<SVGGElement>(null);
+  const chromGRef = useRef<SVGGElement>(null);
+  const huelleRef = useRef<HTMLDivElement>(null);
   /** Mittelpunkt des Zielbuchstabens, in Bildkoordinaten. */
   const [ziel, setZiel] = useState<{ x: number; y: number } | null>(null);
 
@@ -81,25 +100,42 @@ export default function WelcomeZoom({
   }, [mass, anker]);
 
   const { b, h } = mass;
-  const p = Math.min(1, Math.max(0, fortschritt));
-
-  /* Exponentiell, nicht linear: am Anfang öffnet sich die Schrift langsam
-     und lesbar, zum Schluss rauscht sie vorbei. Linear fühlte sich an, als
-     würde man an einem Bild ziehen, nicht als würde man hineinfahren. */
-  const k = Math.pow(MAX_SKALIERUNG, p);
-
   const zx = ziel?.x ?? anker.x;
   const zy = ziel?.y ?? anker.y;
 
-  /* Der Buchstabe wandert während des Zooms in die Bildmitte – sonst führe
-     man an ihm vorbei statt hindurch. */
-  const mx = zx + (b / 2 - zx) * p;
-  const my = zy + (h / 2 - zy) * p;
-  const verwandlung = `translate(${mx} ${my}) scale(${k}) translate(${-zx} ${-zy})`;
+  useImperativeHandle(
+    griff,
+    () => ({
+      setzen(fortschritt: number) {
+        const p = Math.min(1, Math.max(0, fortschritt));
 
-  const deckkraft =
-    p <= AUSBLENDE_AB ? 1 : 1 - (p - AUSBLENDE_AB) / (1 - AUSBLENDE_AB);
-  const chrom = Math.max(0, 1 - p / CHROM_BIS);
+        /* Exponentiell, nicht linear: am Anfang öffnet sich die Schrift
+           langsam und lesbar, zum Schluss rauscht sie vorbei. Linear fühlte
+           sich an, als würde man an einem Bild ziehen, nicht als würde man
+           hineinfahren. */
+        const k = Math.pow(MAX_SKALIERUNG, p);
+
+        /* Der Buchstabe wandert während des Zooms in die Bildmitte – sonst
+           führe man an ihm vorbei statt hindurch. */
+        const mx = zx + (b / 2 - zx) * p;
+        const my = zy + (h / 2 - zy) * p;
+        const v = `translate(${mx} ${my}) scale(${k}) translate(${-zx} ${-zy})`;
+
+        maskeGRef.current?.setAttribute('transform', v);
+        chromGRef.current?.setAttribute('transform', v);
+        textRef.current?.setAttribute(
+          'opacity',
+          String(Math.max(0, 1 - p / CHROM_BIS)),
+        );
+        if (huelleRef.current) {
+          huelleRef.current.style.opacity = String(
+            p <= AUSBLENDE_AB ? 1 : 1 - (p - AUSBLENDE_AB) / (1 - AUSBLENDE_AB),
+          );
+        }
+      },
+    }),
+    [b, h, zx, zy],
+  );
 
   const schrift = {
     fontFamily: 'var(--font-display)',
@@ -109,9 +145,9 @@ export default function WelcomeZoom({
 
   return (
     <div
+      ref={huelleRef}
       aria-hidden="true"
       className="pointer-events-none absolute inset-0"
-      style={{ opacity: deckkraft }}
     >
       <svg
         width="100%"
@@ -124,7 +160,7 @@ export default function WelcomeZoom({
           <mask id="mg-willkommen" maskUnits="userSpaceOnUse" x="0" y="0" width={b} height={h}>
             {/* Weiß deckt, Schwarz stanzt aus. */}
             <rect x="0" y="0" width={b} height={h} fill="#ffffff" />
-            <g transform={verwandlung}>
+            <g ref={maskeGRef}>
               <text
                 x={anker.x}
                 y={anker.y}
@@ -155,7 +191,7 @@ export default function WelcomeZoom({
             Ohne ihn spränge der Chromverlauf des Vorhangs hart auf die
             dunkle Aussparung um. Er trägt zugleich die Messung: an ihm wird
             die Lage des Zielbuchstabens erfragt. */}
-        <g transform={verwandlung}>
+        <g ref={chromGRef}>
           <text
             ref={textRef}
             x={anker.x}
@@ -163,7 +199,6 @@ export default function WelcomeZoom({
             textAnchor="middle"
             dominantBaseline="central"
             fill="url(#mg-chrom)"
-            opacity={chrom}
             style={schrift}
           >
             {TEXT}
@@ -172,4 +207,6 @@ export default function WelcomeZoom({
       </svg>
     </div>
   );
-}
+});
+
+export default WelcomeZoom;

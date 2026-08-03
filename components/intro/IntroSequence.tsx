@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { partners, type Partner } from '@/lib/partners';
 import { lockScroll, unlockScroll } from '@/lib/scroll-lock';
 import { useIntro } from './IntroProvider';
-import WelcomeZoom, { type Anker } from './WelcomeZoom';
+import WelcomeZoom, { type Anker, type ZoomGriff } from './WelcomeZoom';
 
 /** Scrollweg in Pixeln für den vollständigen Durchflug durch die Schrift.
     Bewusst lang: bei 900 war der Effekt nach vier Radrasten vorbei, bevor
@@ -72,7 +72,11 @@ export default function IntroSequence() {
      läuft weich hinterher – rohe Radwerte sind sprunghaft und ruckelten
      sichtbar in der Skalierung. */
   const ziel = useRef(0);
-  const [zoom, setZoom] = useState(0);
+  /* Der Fortschritt liegt in einem Ref, nicht im Zustand: er ändert sich
+     sechzigmal je Sekunde, und jede Änderung im Zustand hieße ein
+     Neudurchlauf des ganzen Vorhangs. Gesetzt wird direkt am SVG. */
+  const zoomRef = useRef<ZoomGriff>(null);
+  const [zoomLaeuft, setZoomLaeuft] = useState(false);
 
   /* Lage der Willkommensschrift, am gerenderten Element abgemessen. Die
      Maske beim Durchflug setzt darauf auf – nachgerechnet aus `top` und
@@ -158,6 +162,7 @@ export default function IntroSequence() {
 
     let laeuft = true;
     let gezeigt = 0;
+    setZoomLaeuft(true);
 
     const schieben = (weg: number) => {
       ziel.current = Math.min(1.06, Math.max(0, ziel.current + weg / ZOOM_WEG));
@@ -212,15 +217,33 @@ export default function IntroSequence() {
       120,
     );
 
-    const takt = () => {
+    /* Alles nach Zeit, nicht nach Bildern.
+​
+       Vorher rückte der Fortschritt je Bild um einen festen Betrag vor. Auf
+       einem schnellen Rechner mit sechzig Bildern war der Durchflug nach
+       knapp zwei Sekunden durch – auf dem Handy mit sieben Bildern dauerte
+       derselbe Weg dreizehn Sekunden. Er ruckelte also nicht nur, er zog
+       sich auch endlos. Mit der vergangenen Zeit als Maß dauert er überall
+       gleich lang; auf schwacher Hardware ist er dann grob, aber kurz. */
+    let vorher = performance.now();
+    const takt = (jetzt: number) => {
       if (!laeuft) return;
+      /* Der Deckel fängt nur echte Aussetzer ab (Tabwechsel, langer
+         Stillstand). Er darf nicht in der Nähe normaler Bildabstände liegen:
+         bei 50 ms rechnete ein Gerät mit vier Bildern je Sekunde nur ein
+         Fünftel der verstrichenen Zeit an – der Durchflug dauerte dadurch
+         dreiundzwanzig statt viereinhalb Sekunden. */
+      const dt = Math.min(0.3, (jetzt - vorher) / 1000);
+      vorher = jetzt;
+
       /* Ohne eigene Eingabe zieht es sich weiter: einmal angestoßen soll der
          Durchflug zu Ende gehen und nicht auf halbem Weg stehen bleiben,
          wenn jemand aufhört zu scrollen. Rund viereinhalb Sekunden von
          allein – wer scrollt, ist deutlich schneller da. */
-      ziel.current = Math.min(1.06, ziel.current + 0.004);
-      gezeigt += (ziel.current - gezeigt) * 0.12;
-      setZoom(gezeigt);
+      ziel.current = Math.min(1.06, ziel.current + 0.24 * dt);
+      gezeigt += (ziel.current - gezeigt) * (1 - Math.pow(0.0008, dt));
+      zoomRef.current?.setzen(gezeigt);
+
       if (gezeigt >= 1) {
         laeuft = false;
         setStage('done');
@@ -314,11 +337,11 @@ export default function IntroSequence() {
                dabei sein Schwarz zurück – ein Aufblitzen genau in dem
                Moment, in dem die Seite stehen soll. */
             className={`fixed inset-0 z-[80] cursor-pointer select-none ${
-              stage === 'zoom' || zoom > 0 ? '' : 'bg-void'
+              stage === 'zoom' || zoomLaeuft ? '' : 'bg-void'
             }`}
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: zoom > 0 ? 0 : 0.8, ease: EASE }}
+            transition={{ duration: zoomLaeuft ? 0 : 0.8, ease: EASE }}
             onClick={() => {
               if (stage === 'running') {
                 skip();
@@ -329,7 +352,7 @@ export default function IntroSequence() {
               }
             }}
           >
-            {stage === 'zoom' && <WelcomeZoom fortschritt={zoom} anker={anker} />}
+            {stage === 'zoom' && <WelcomeZoom ref={zoomRef} anker={anker} />}
 
             {/* Partnerlogos, eines nach dem anderen */}
             <div className="pointer-events-none absolute inset-0 px-8" hidden={stage === 'zoom'}>
