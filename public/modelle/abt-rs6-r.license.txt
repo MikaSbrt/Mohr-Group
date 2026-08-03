@@ -1,0 +1,11 @@
+Model Information:
+* title:	2020 ABT Sportline Audi RS6-R
+* source:	https://sketchfab.com/3d-models/2020-abt-sportline-audi-rs6-r-8efe6fd313234bef9b63c64293114dbf
+* author:	Ddiaz Design (https://sketchfab.com/ddiaz-design)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "2020 ABT Sportline Audi RS6-R" (https://sketchfab.com/3d-models/2020-abt-sportline-audi-rs6-r-8efe6fd313234bef9b63c64293114dbf) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
